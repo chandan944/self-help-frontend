@@ -31,13 +31,12 @@ const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
 // Auth Stack
+// Auth Stack - Only Login (No Register)
 const AuthStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="Login" component={LoginScreen} />
-    <Stack.Screen name="Register" component={RegisterScreen} />
   </Stack.Navigator>
 );
-
 // Diary Stack
 const DiaryStack = () => (
   <Stack.Navigator

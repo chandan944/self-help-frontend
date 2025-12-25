@@ -2,6 +2,7 @@
   "expo": {
     "name": "self-help-mobile",
     "slug": "self-help-mobile",
+    "scheme": "selfhelp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,6 +17,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.selfhelp.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -24,6 +26,11 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "d3aee11b-0454-4004-85cc-8713dcc1e0c3"
+      }
     }
   }
 }

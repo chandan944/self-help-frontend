@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { saveToken, saveUser, getToken, getUser, clearStorage } from '../utils/storage';
-import { getUserFromToken } from '../services/authService';
+import { sendFirebaseTokenToBackend } from '../services/authService';
 
 const AuthContext = createContext();
 
@@ -23,44 +23,68 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const checkAuth = async () => {
+    console.log('🔍 Checking authentication status...');
     try {
       const token = await getToken();
       const userData = await getUser();
       
       if (token && userData) {
+        console.log('✅ User already authenticated:', userData.email);
         setUser(userData);
         setIsAuthenticated(true);
+      } else {
+        console.log('ℹ️ No existing authentication found');
       }
     } catch (error) {
-      console.error('Auth check failed:', error);
+      console.error('❌ Auth check failed:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Handle Google OAuth response
-  const handleGoogleAuth = async (token) => {
+  // Handle Firebase authentication
+  const handleFirebaseAuth = async (firebaseIdToken, userInfo) => {
+    console.log('🔐 Processing Firebase authentication...');
+    console.log('👤 User info:', userInfo.email);
+
     try {
-      if (!token) {
-        return { success: false, message: 'No token received' };
-      }
-
-      // Save token
-      await saveToken(token);
-
-      // Get user info from token (decode JWT or call API)
-      const userData = await getUserFromToken(token);
+      // Send Firebase ID token to your backend
+      console.log('📤 Sending Firebase token to backend...');
+      const response = await sendFirebaseTokenToBackend(firebaseIdToken, userInfo);
       
-      if (userData) {
+      console.log('📥 Backend response received');
+
+      if (response && response.token) {
+        console.log('✅ Backend JWT received');
+        
+        // Save backend JWT token
+        await saveToken(response.token);
+        console.log('💾 Token saved to storage');
+
+        // Save user data
+        const userData = {
+          email: userInfo.email,
+          name: userInfo.name,
+          imageUrl: userInfo.imageUrl,
+          role: response.role || 'USER',
+        };
+        
         await saveUser(userData);
+        console.log('💾 User data saved to storage');
+
         setUser(userData);
         setIsAuthenticated(true);
+        
+        console.log('🎉 Authentication complete!');
         return { success: true };
       }
       
-      return { success: false, message: 'Failed to get user data' };
+      console.error('❌ No token in backend response');
+      return { success: false, message: 'No token received from backend' };
+
     } catch (error) {
-      console.error('Google auth error:', error);
+      console.error('❌ Firebase auth error:', error);
+      console.error('Error details:', error.response?.data);
       return { 
         success: false, 
         message: error.response?.data?.message || 'Authentication failed' 
@@ -70,12 +94,14 @@ export const AuthProvider = ({ children }) => {
 
   // Logout function
   const logout = async () => {
+    console.log('👋 Logging out...');
     try {
       await clearStorage();
       setUser(null);
       setIsAuthenticated(false);
+      console.log('✅ Logout successful');
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error('❌ Logout error:', error);
     }
   };
 
@@ -83,10 +109,9 @@ export const AuthProvider = ({ children }) => {
     user,
     isLoading,
     isAuthenticated,
-    handleGoogleAuth,
+    handleFirebaseAuth,
     logout,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
-
