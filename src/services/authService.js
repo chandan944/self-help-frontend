@@ -1,9 +1,8 @@
 import api from './api';
 
 export const sendFirebaseTokenToBackend = async (firebaseIdToken, userInfo) => {
-  console.log('📤 Sending to backend:', api.defaults.baseURL + '/auth/firebase');
-  console.log('📦 Payload:', { email: userInfo.email, name: userInfo.name });
-
+ console.log('📤 Backend URL:', api.defaults.baseURL);
+  console.log('📤 Full endpoint:', api.defaults.baseURL + '/auth/firebase');
   try {
     const response = await api.post('/auth/firebase', {
       firebaseIdToken,

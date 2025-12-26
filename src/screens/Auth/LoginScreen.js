@@ -13,6 +13,8 @@ import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../../context/AuthContext';
 import { COLORS } from '../../utils/colors';
+import * as AuthSession from 'expo-auth-session';
+
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -20,121 +22,74 @@ const LoginScreen = () => {
   const [loading, setLoading] = useState(false);
   const { handleFirebaseAuth } = useAuth();
 
-  // Configure Google OAuth
-  const [request, response, promptAsync] = Google.useAuthRequest({
-   webClientId:
-      '1036194311354-ce30pitar0hosmp0dl4pmis2qptbv26u.apps.googleusercontent.com',
-    useProxy: true,androidClientId: 'PASTE_YOUR_ANDROID_CLIENT_ID_HERE.apps.googleusercontent.com',
-    // iosClientId: 'YOUR_IOS_CLIENT_ID.apps.googleusercontent.com', // Add if iOS
-  });
+const redirectUri = AuthSession.makeRedirectUri({
+  scheme: 'selfhelp',
+  useProxy: true,
+});
 
+const [request, response, promptAsync] = Google.useAuthRequest({
+  expoClientId: '1036194311354-fna7r9urun9gv8sf02bipvlf78lqrfn4.apps.googleusercontent.com',
+  androidClientId: '1036194311354-m8hvrftmru48srfo5a1uiaauhr3k5ev7.apps.googleusercontent.com',
+  redirectUri: redirectUri,
+});
+
+// Add this debug log
+useEffect(() => {
+  console.log('🔗 Redirect URI:', redirectUri);
+  console.log('🔧 Auth ready:', !!request);
+}, []);
   // Debug configuration on mount
-  useEffect(() => {
-    console.log('🔧 Google Auth Configuration:');
-    console.log('   expoClientId:', 'PASTE_YOUR_WEB_CLIENT_ID_HERE.apps.googleusercontent.com'.substring(0, 30) + '...');
-    console.log('   androidClientId:', 'PASTE_YOUR_ANDROID_CLIENT_ID_HERE.apps.googleusercontent.com'.substring(0, 30) + '...');
-    console.log('   Request ready:', !!request);
-  }, []);
+useEffect(() => {
+  if (response?.type === 'success') {
+    getUserInfo(response.authentication.accessToken);
+  } else if (response?.type === 'error') {
+    Alert.alert('Auth Error', response.error?.message || 'Unknown error');
+    setLoading(false);
+  } else if (response?.type === 'cancel' || response?.type === 'dismiss') {
+    setLoading(false);
+  }
+}, [response]);
 
   // Handle response
-  useEffect(() => {
-    console.log('📡 Response received:', response?.type);
+
+const getUserInfo = async (token) => {
+  try {
+    console.log('📥 Getting user info...');
     
-    if (response?.type === 'success') {
-      console.log('✅ Auth success!');
-      console.log('📦 Authentication object:', JSON.stringify(response.authentication, null, 2));
-      const { authentication } = response;
-      getUserInfo(authentication.accessToken);
-    } else if (response?.type === 'error') {
-      console.error('❌ Auth error type:', response.type);
-      console.error('❌ Error details:', JSON.stringify(response.error, null, 2));
-      console.error('❌ Full response:', JSON.stringify(response, null, 2));
-      Alert.alert('Authentication Error', `Type: ${response.error?.code || 'Unknown'}\nMessage: ${response.error?.message || 'Check console'}`);
-      setLoading(false);
-    } else if (response?.type === 'cancel') {
-      console.log('⚠️ User cancelled login');
-      setLoading(false);
-    } else if (response?.type === 'dismiss') {
-      console.log('⚠️ User dismissed login');
-      setLoading(false);
-    } else if (response) {
-      console.log('⚠️ Unknown response type:', response.type);
-      console.log('📦 Full response:', JSON.stringify(response, null, 2));
-      setLoading(false);
+    const response = await fetch('https://www.googleapis.com/userinfo/v2/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) throw new Error('Failed to get user info');
+
+    const userInfo = await response.json();
+    console.log('✅ User:', userInfo.email);
+
+    const result = await handleFirebaseAuth(token, {
+      email: userInfo.email,
+      name: userInfo.name,
+      imageUrl: userInfo.picture,
+    });
+
+    if (!result.success) {
+      Alert.alert('Login Failed', result.message);
     }
-  }, [response]);
+  } catch (error) {
+    console.error('❌ Login error:', error.message);
+    Alert.alert('Error', error.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
-  const getUserInfo = async (token) => {
-    if (!token) {
-      console.error('❌ No access token provided');
-      setLoading(false);
-      return;
-    }
-    
-    try {
-      console.log('📥 Fetching user info from Google...');
-      console.log('🔑 Access token (first 20 chars):', token.substring(0, 20) + '...');
-      
-      const response = await fetch(
-        'https://www.googleapis.com/userinfo/v2/me',
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-
-      console.log('📡 Google API response status:', response.status);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Google API error:', errorText);
-        throw new Error(`Google API error: ${response.status}`);
-      }
-
-      const userInfo = await response.json();
-      console.log('✅ User info received:', JSON.stringify(userInfo, null, 2));
-
-      // Send to backend
-      console.log('📤 Sending to Spring Boot backend...');
-      const result = await handleFirebaseAuth(token, {
-        email: userInfo.email,
-        name: userInfo.name,
-        imageUrl: userInfo.picture,
-      });
-
-      console.log('📥 Backend response:', JSON.stringify(result, null, 2));
-
-      if (!result.success) {
-        console.error('❌ Backend rejected login:', result.message);
-        Alert.alert('Login Failed', result.message);
-      } else {
-        console.log('🎉 Login successful!');
-      }
-
-    } catch (error) {
-      console.error('❌ Error in getUserInfo:', error);
-      console.error('❌ Error message:', error.message);
-      console.error('❌ Error stack:', error.stack);
-      Alert.alert('Error', `Failed to complete login: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGoogleSignIn = () => {
-    console.log('🚀 Starting Google Sign-In...');
-    console.log('📋 Request object exists:', !!request);
-    console.log('📋 Request details:', JSON.stringify(request, null, 2));
-    
-    if (!request) {
-      console.error('❌ Request not ready yet');
-      Alert.alert('Error', 'Authentication not ready. Please wait and try again.');
-      return;
-    }
-    
-    setLoading(true);
-    console.log('🔓 Opening Google Sign-In prompt...');
-    promptAsync();
-  };
+const handleGoogleSignIn = () => {
+  if (!request) {
+    Alert.alert('Error', 'Please wait...');
+    return;
+  }
+  setLoading(true);
+  promptAsync();
+};
 
   return (
     <LinearGradient
@@ -174,7 +129,7 @@ const LoginScreen = () => {
             ) : (
               <>
                 <Ionicons name="logo-google" size={24} color="#DB4437" />
-                <Text style={styles.googleButtonText}>Continue with Google</Text>
+                <Text style={styles.googleButtonText}>Continue with Googl😂</Text>
               </>
             )}
           </TouchableOpacity>
