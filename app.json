@@ -1,7 +1,8 @@
 {
   "expo": {
     "name": "self-help-mobile",
-    "slug": "self-help-mobile",
+    "slug": "selfhelp-app",
+    "owner": "chandanprajapati7",
     "scheme": "selfhelp",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -31,6 +32,9 @@
       "eas": {
         "projectId": "d3aee11b-0454-4004-85cc-8713dcc1e0c3"
       }
-    }
+    },
+    "plugins": [
+      "expo-web-browser"
+    ]
   }
 }

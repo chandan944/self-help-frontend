@@ -9,90 +9,131 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
-import auth from '@react-native-firebase/auth';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../../context/AuthContext';
 import { COLORS } from '../../utils/colors';
+
+WebBrowser.maybeCompleteAuthSession();
 
 const LoginScreen = () => {
   const [loading, setLoading] = useState(false);
   const { handleFirebaseAuth } = useAuth();
 
+  // Configure Google OAuth
+  const [request, response, promptAsync] = Google.useAuthRequest({
+   webClientId:
+      '1036194311354-ce30pitar0hosmp0dl4pmis2qptbv26u.apps.googleusercontent.com',
+    useProxy: true,androidClientId: 'PASTE_YOUR_ANDROID_CLIENT_ID_HERE.apps.googleusercontent.com',
+    // iosClientId: 'YOUR_IOS_CLIENT_ID.apps.googleusercontent.com', // Add if iOS
+  });
+
+  // Debug configuration on mount
   useEffect(() => {
-    console.log('🔧 Configuring Google Sign-In...');
-    
-    // Configure Google Sign-In
-    GoogleSignin.configure({
-      webClientId: '1:1036194311354:android:826179f3a5f05a00be2683.apps.googleusercontent.com', // From Firebase Console
-      offlineAccess: true,
-    });
-    
-    console.log('✅ Google Sign-In configured');
+    console.log('🔧 Google Auth Configuration:');
+    console.log('   expoClientId:', 'PASTE_YOUR_WEB_CLIENT_ID_HERE.apps.googleusercontent.com'.substring(0, 30) + '...');
+    console.log('   androidClientId:', 'PASTE_YOUR_ANDROID_CLIENT_ID_HERE.apps.googleusercontent.com'.substring(0, 30) + '...');
+    console.log('   Request ready:', !!request);
   }, []);
 
-  const handleGoogleSignIn = async () => {
-    console.log('🚀 Starting Google Sign-In process...');
-    setLoading(true);
+  // Handle response
+  useEffect(() => {
+    console.log('📡 Response received:', response?.type);
+    
+    if (response?.type === 'success') {
+      console.log('✅ Auth success!');
+      console.log('📦 Authentication object:', JSON.stringify(response.authentication, null, 2));
+      const { authentication } = response;
+      getUserInfo(authentication.accessToken);
+    } else if (response?.type === 'error') {
+      console.error('❌ Auth error type:', response.type);
+      console.error('❌ Error details:', JSON.stringify(response.error, null, 2));
+      console.error('❌ Full response:', JSON.stringify(response, null, 2));
+      Alert.alert('Authentication Error', `Type: ${response.error?.code || 'Unknown'}\nMessage: ${response.error?.message || 'Check console'}`);
+      setLoading(false);
+    } else if (response?.type === 'cancel') {
+      console.log('⚠️ User cancelled login');
+      setLoading(false);
+    } else if (response?.type === 'dismiss') {
+      console.log('⚠️ User dismissed login');
+      setLoading(false);
+    } else if (response) {
+      console.log('⚠️ Unknown response type:', response.type);
+      console.log('📦 Full response:', JSON.stringify(response, null, 2));
+      setLoading(false);
+    }
+  }, [response]);
 
+  const getUserInfo = async (token) => {
+    if (!token) {
+      console.error('❌ No access token provided');
+      setLoading(false);
+      return;
+    }
+    
     try {
-      // Step 1: Check if device supports Google Play services
-      console.log('📱 Checking Google Play services...');
-      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-      console.log('✅ Google Play services available');
+      console.log('📥 Fetching user info from Google...');
+      console.log('🔑 Access token (first 20 chars):', token.substring(0, 20) + '...');
+      
+      const response = await fetch(
+        'https://www.googleapis.com/userinfo/v2/me',
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
 
-      // Step 2: Sign in with Google
-      console.log('🔐 Getting Google user info...');
-      const { idToken, user } = await GoogleSignin.signIn();
-      console.log('✅ Google Sign-In successful:', user.email);
-      console.log('🎫 ID Token received:', idToken.substring(0, 20) + '...');
+      console.log('📡 Google API response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Google API error:', errorText);
+        throw new Error(`Google API error: ${response.status}`);
+      }
 
-      // Step 3: Create Firebase credential
-      console.log('🔥 Creating Firebase credential...');
-      const googleCredential = auth.GoogleAuthProvider.credential(idToken);
-      console.log('✅ Firebase credential created');
+      const userInfo = await response.json();
+      console.log('✅ User info received:', JSON.stringify(userInfo, null, 2));
 
-      // Step 4: Sign in to Firebase
-      console.log('🔥 Signing in to Firebase...');
-      const firebaseUser = await auth().signInWithCredential(googleCredential);
-      console.log('✅ Firebase authentication successful:', firebaseUser.user.email);
-
-      // Step 5: Get Firebase ID token
-      console.log('🎫 Getting Firebase ID token...');
-      const firebaseIdToken = await firebaseUser.user.getIdToken();
-      console.log('✅ Firebase ID token received:', firebaseIdToken.substring(0, 20) + '...');
-
-      // Step 6: Send to your backend
-      console.log('📤 Sending token to backend...');
-      const result = await handleFirebaseAuth(firebaseIdToken, {
-        email: firebaseUser.user.email,
-        name: firebaseUser.user.displayName,
-        imageUrl: firebaseUser.user.photoURL,
+      // Send to backend
+      console.log('📤 Sending to Spring Boot backend...');
+      const result = await handleFirebaseAuth(token, {
+        email: userInfo.email,
+        name: userInfo.name,
+        imageUrl: userInfo.picture,
       });
 
-      if (result.success) {
-        console.log('✅ Login successful!');
-      } else {
-        console.error('❌ Backend authentication failed:', result.message);
+      console.log('📥 Backend response:', JSON.stringify(result, null, 2));
+
+      if (!result.success) {
+        console.error('❌ Backend rejected login:', result.message);
         Alert.alert('Login Failed', result.message);
+      } else {
+        console.log('🎉 Login successful!');
       }
 
     } catch (error) {
-      console.error('❌ Google Sign-In Error:', error);
-      console.error('Error code:', error.code);
-      console.error('Error message:', error.message);
-
-      if (error.code === 'sign_in_cancelled') {
-        console.log('ℹ️ User cancelled sign-in');
-      } else if (error.code === 'in_progress') {
-        console.log('⏳ Sign-in already in progress');
-      } else if (error.code === 'play_services_not_available') {
-        Alert.alert('Error', 'Google Play Services not available');
-      } else {
-        Alert.alert('Error', 'Failed to sign in with Google');
-      }
+      console.error('❌ Error in getUserInfo:', error);
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Error stack:', error.stack);
+      Alert.alert('Error', `Failed to complete login: ${error.message}`);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGoogleSignIn = () => {
+    console.log('🚀 Starting Google Sign-In...');
+    console.log('📋 Request object exists:', !!request);
+    console.log('📋 Request details:', JSON.stringify(request, null, 2));
+    
+    if (!request) {
+      console.error('❌ Request not ready yet');
+      Alert.alert('Error', 'Authentication not ready. Please wait and try again.');
+      return;
+    }
+    
+    setLoading(true);
+    console.log('🔓 Opening Google Sign-In prompt...');
+    promptAsync();
   };
 
   return (
@@ -101,14 +142,12 @@ const LoginScreen = () => {
       style={styles.container}
     >
       <View style={styles.content}>
-        {/* Logo Section */}
         <View style={styles.logoSection}>
           <Text style={styles.logo}>🌟</Text>
           <Text style={styles.appName}>SelfHelp</Text>
           <Text style={styles.tagline}>Your Personal Growth Companion</Text>
         </View>
 
-        {/* Features */}
         <View style={styles.features}>
           <View style={styles.feature}>
             <Ionicons name="book" size={32} color={COLORS.white} />
@@ -124,12 +163,11 @@ const LoginScreen = () => {
           </View>
         </View>
 
-        {/* Google Sign In Button */}
         <View style={styles.authSection}>
           <TouchableOpacity
             style={styles.googleButton}
             onPress={handleGoogleSignIn}
-            disabled={loading}
+            disabled={!request || loading}
           >
             {loading ? (
               <ActivityIndicator size="small" color={COLORS.primary} />
@@ -142,7 +180,7 @@ const LoginScreen = () => {
           </TouchableOpacity>
 
           <Text style={styles.disclaimer}>
-            By continuing, you agree to our Terms of Service and Privacy Policy
+            By continuing, you agree to our Terms of Service
           </Text>
         </View>
       </View>
